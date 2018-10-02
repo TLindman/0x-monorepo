@@ -40,6 +40,7 @@
         "MixinAuthorizable",
         "MultiSigWallet",
         "MultiSigWalletWithTimeLock",
+        "OrderMatcher",
         "OrderValidator",
         "ReentrantERC20Token",
         "TestAssetProxyOwner",
