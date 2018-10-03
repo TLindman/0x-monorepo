@@ -23,7 +23,7 @@ import "../../protocol/Exchange/libs/LibOrder.sol";
 import "../../protocol/Exchange/libs/LibFillResults.sol";
 import "../../protocol/Exchange/libs/LibAbiEncoder.sol";
 import "../../utils/Ownable/Ownable.sol";
-import "./LibConstants.sol";
+import "./libs/LibConstants.sol";
 
 
 contract MixinMatchOrders is
@@ -49,11 +49,6 @@ contract MixinMatchOrders is
         public
         onlyOwner
     {
-        // We assume that rightOrder.takerAssetData == leftOrder.makerAssetData and rightOrder.makerAssetData == leftOrder.takerAssetData.
-        // If this assumption isn't true, the match will fail at signature validation.
-        rightOrder.makerAssetData = leftOrder.takerAssetData;
-        rightOrder.takerAssetData = leftOrder.makerAssetData;
-
         // Match orders, maximally filling `leftOrder`
         // TODO: optimize by manually ABI encoding `matchOrders`
         LibFillResults.MatchedFillResults memory matchedFillResults = EXCHANGE.matchOrders(
@@ -65,8 +60,12 @@ contract MixinMatchOrders is
 
         // If a spread was taken, use the spread to fill remaining amount of `rightOrder`
         uint256 leftMakerAssetSpreadAmount = matchedFillResults.leftMakerAssetSpreadAmount;
-        // TODO: Do we need to check if `rightOrder` is completely filled?
-        if (leftMakerAssetSpreadAmount > 0) {
+        // Only attempt to fill `rightOrder` if a spread was taken and if not already completely filled
+        if (leftMakerAssetSpreadAmount > 0 && matchedFillResults.right.takerAssetFilledAmount < rightOrder.takerAssetAmount) {
+            // The `assetData` fields of the `rightOrder` could have been null for the `matchOrders` call. We reassign them before calling `fillOrder`.
+            rightOrder.makerAssetData = leftOrder.takerAssetData;
+            rightOrder.takerAssetData = leftOrder.makerAssetData;
+
             // We do not need to pass in a signature since it was already validated in the `matchOrders` call
             bytes memory fillOrderCalldata = abiEncodeFillOrder(
                 rightOrder,
@@ -74,9 +73,9 @@ contract MixinMatchOrders is
                 ""
             );
 
+            // Call `fillOrder`
             address exchange = address(EXCHANGE);
             assembly {
-                // Call `fillOrder`
                 let success := call(
                     gas,                                // forward all gas
                     exchange,                           // call address of Exchange contract
