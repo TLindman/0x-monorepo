@@ -17,18 +17,13 @@
 */
 
 pragma solidity 0.4.24;
-pragma experimental ABIEncoderV2;
 
-import "../../protocol/Exchange/libs/LibOrder.sol";
-import "../../protocol/Exchange/libs/LibFillResults.sol";
-import "../../protocol/Exchange/libs/LibAbiEncoder.sol";
 import "../../utils/Ownable/Ownable.sol";
 import "./libs/LibConstants.sol";
 
 
 contract MixinMatchOrders is
     Ownable,
-    LibAbiEncoder,
     LibConstants
 {        
     // The below assembly in the fallback function is functionaly equivalent to the following Solidity code:
@@ -83,12 +78,15 @@ contract MixinMatchOrders is
         assembly {
             // The first 4 bytes of calldata holds the function selector
             // `matchOrders` selector = 0x3c28d861
-            if eq(and(calldataload(0), 0xffffffff00000000000000000000000000000000000000000000000000000000), 0x3c28d86100000000000000000000000000000000000000000000000000000000) {
+            if eq(
+                and(calldataload(0), 0xffffffff00000000000000000000000000000000000000000000000000000000),
+                0x3c28d86100000000000000000000000000000000000000000000000000000000
+            ) {
 
                 // Load address of `owner`
                 let owner := sload(owner_slot)
 
-                // Revert if `msg.sender != owner`
+                // Revert if `msg.sender` != `owner`
                 if iszero(eq(owner, caller)) {
                     // Revert with `Error("ONLY_CONTRACT_OWNER")`
                     mstore(0, 0x08c379a000000000000000000000000000000000000000000000000000000000)
@@ -201,10 +199,10 @@ contract MixinMatchOrders is
                 let rightOrderStart := add(calldataload(36), 4)
 
                 // Only call `fillOrder` if a spread was taken and `rightOrder` has not been completely filled
-                // `leftMakerAssetSpreadAmount` = `mload(256)`
-                // `rightOrderTakerAssetFilledAmount` = `mload(160)`
-                // `rightOrderTakerAssetAmount` = `calldataload(add(rightOrderStart, 160))`
-                if and(gt(mload(256), 0), lt(mload(160), calldataload(add(rightOrderStart, 160)))) {
+                if and(
+                    gt(mload(256), 0),                                       // gt(leftMakerAssetSpreadAmount, 0)
+                    lt(mload(160), calldataload(add(rightOrderStart, 160)))  // lt(rightOrderTakerAssetFilledAmount, rightOrderTakerAssetAmount)
+                ) {
                     
                     // We want the following layout in memory before calling `fillOrder`:
 
@@ -241,8 +239,14 @@ contract MixinMatchOrders is
                     let leftOrderStart := add(calldataload(4), 4)
 
                     // Calculate locations of `leftMakerAssetData` and `leftTakerAssetData` in calldata
-                    let leftMakerAssetDataStart := add(leftOrderStart, calldataload(add(leftOrderStart, 320)))
-                    let leftTakerAssetDataStart := add(leftOrderStart, calldataload(add(leftOrderStart, 352)))
+                    let leftMakerAssetDataStart := add(
+                        leftOrderStart,
+                        calldataload(add(leftOrderStart, 320))  // offset to `leftMakerAssetData`
+                    )
+                    let leftTakerAssetDataStart := add(
+                        leftOrderStart,
+                        calldataload(add(leftOrderStart, 352))  // offset to `leftTakerAssetData`
+                    )
 
                     // Load lengths of `leftMakerAssetData` and `leftTakerAssetData`
                     let leftMakerAssetDataLen := calldataload(leftMakerAssetDataStart)
@@ -256,16 +260,24 @@ contract MixinMatchOrders is
                     mstore(add(rightOrderStart, 352), rightTakerAssetDataOffset)
 
                     // Copy `leftTakerAssetData` from calldata onto `rightMakerAssetData` in memory
-                    // `rightMakerAssetDataStart` = `add(rightOrderStart, 384)`
-                    calldatacopy(add(rightOrderStart, 384), leftTakerAssetDataStart, add(leftTakerAssetDataLen, 32))
+                    calldatacopy(
+                        add(rightOrderStart, 384),  // `rightMakerAssetDataStart`
+                        leftTakerAssetDataStart,
+                        add(leftTakerAssetDataLen, 32)
+                    )
 
                     // Copy `leftMakerAssetData` from calldata onto `rightTakerAssetData` in memory
-                    // `rightTakerAssetDataStart` = `add(rightOrderStart, rightTakerAssetDataOffset)`
-                    calldatacopy(add(rightOrderStart, rightTakerAssetDataOffset), leftMakerAssetDataStart, add(leftMakerAssetDataLen, 32))
+                    calldatacopy(
+                        add(rightOrderStart, rightTakerAssetDataOffset),  // `rightTakerAssetDataStart`
+                        leftMakerAssetDataStart,
+                        add(leftMakerAssetDataLen, 32)
+                    )
 
-                    // Write length of signature
-                    // `rightTakerAssetDataStart` = `add(rightOrderStart, rightTakerAssetDataOffset)`
-                    let rightSignatureStart := add(add(rightOrderStart, rightTakerAssetDataOffset), add(leftMakerAssetDataLen, 32))
+                    // Write length of signature (always 0 since signature was previously validated)
+                    let rightSignatureStart := add(
+                        add(rightOrderStart, rightTakerAssetDataOffset),  // `rightTakerAssetDataStart`
+                        add(leftMakerAssetDataLen, 32)                    
+                    )
                     mstore(rightSignatureStart, 0)
 
                     let cdStart := sub(rightOrderStart, 100)
