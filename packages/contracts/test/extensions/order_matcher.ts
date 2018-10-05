@@ -117,7 +117,19 @@ describe('OrderMatcher', () => {
         defaultERC20TakerAssetAddress = erc20TokenB.address;
         const leftMakerAssetData = assetDataUtils.encodeERC20AssetData(defaultERC20MakerAssetAddress);
         const leftTakerAssetData = assetDataUtils.encodeERC20AssetData(defaultERC20TakerAssetAddress);
-        // Set OrderMatcher allowances
+        // Set OrderMatcher balances and allowances
+        await web3Wrapper.awaitTransactionSuccessAsync(
+            await erc20TokenA.setBalance.sendTransactionAsync(orderMatcher.address, constants.INITIAL_ERC20_BALANCE, {
+                from: owner,
+            }),
+            constants.AWAIT_TRANSACTION_MINED_MS,
+        );
+        await web3Wrapper.awaitTransactionSuccessAsync(
+            await erc20TokenB.setBalance.sendTransactionAsync(orderMatcher.address, constants.INITIAL_ERC20_BALANCE, {
+                from: owner,
+            }),
+            constants.AWAIT_TRANSACTION_MINED_MS,
+        );
         await web3Wrapper.awaitTransactionSuccessAsync(
             await orderMatcher.approveAssetProxy.sendTransactionAsync(
                 leftMakerAssetData,
@@ -164,7 +176,7 @@ describe('OrderMatcher', () => {
     afterEach(async () => {
         await blockchainLifecycle.revertAsync();
     });
-    describe('matchOrders', () => {
+    describe.only('matchOrders', () => {
         beforeEach(async () => {
             erc20BalancesByOwner = await erc20Wrapper.getBalancesAsync();
         });
@@ -190,13 +202,19 @@ describe('OrderMatcher', () => {
                 leftMakerAssetSpreadAmount: signedOrderLeft.makerAssetAmount.minus(signedOrderRight.takerAssetAmount),
             };
             const initialLeftMakerAssetTakerBalance = await erc20TokenA.balanceOf.callAsync(orderMatcher.address);
+            const data = exchange.matchOrders.getABIEncodedTransactionData(
+                signedOrderLeft,
+                signedOrderRight,
+                signedOrderLeft.signature,
+                signedOrderRight.signature,
+            );
             await web3Wrapper.awaitTransactionSuccessAsync(
-                await orderMatcher.matchOrders.sendTransactionAsync(
-                    signedOrderLeft,
-                    signedOrderRight,
-                    signedOrderLeft.signature,
-                    signedOrderRight.signature,
-                ),
+                await web3Wrapper.sendTransactionAsync({
+                    data,
+                    to: orderMatcher.address,
+                    from: owner,
+                    gas: constants.MAX_MATCH_ORDERS_GAS,
+                }),
                 constants.AWAIT_TRANSACTION_MINED_MS,
             );
             const newLeftMakerAssetTakerBalance = await erc20TokenA.balanceOf.callAsync(orderMatcher.address);
@@ -245,13 +263,19 @@ describe('OrderMatcher', () => {
                 amountBoughtByRightMaker: signedOrderRight.takerAssetAmount,
             };
             const initialLeftMakerAssetTakerBalance = await erc20TokenA.balanceOf.callAsync(orderMatcher.address);
+            const data = exchange.matchOrders.getABIEncodedTransactionData(
+                signedOrderLeft,
+                signedOrderRight,
+                signedOrderLeft.signature,
+                signedOrderRight.signature,
+            );
             await web3Wrapper.awaitTransactionSuccessAsync(
-                await orderMatcher.matchOrders.sendTransactionAsync(
-                    signedOrderLeft,
-                    signedOrderRight,
-                    signedOrderLeft.signature,
-                    signedOrderRight.signature,
-                ),
+                await web3Wrapper.sendTransactionAsync({
+                    data,
+                    to: orderMatcher.address,
+                    from: owner,
+                    gas: constants.MAX_MATCH_ORDERS_GAS,
+                }),
                 constants.AWAIT_TRANSACTION_MINED_MS,
             );
             const newLeftMakerAssetTakerBalance = await erc20TokenA.balanceOf.callAsync(orderMatcher.address);
@@ -303,15 +327,24 @@ describe('OrderMatcher', () => {
             const initialLeftMakerAssetTakerBalance = await erc20TokenA.balanceOf.callAsync(orderMatcher.address);
             const initialLeftTakerAssetTakerBalance = await erc20TokenB.balanceOf.callAsync(orderMatcher.address);
             // Match signedOrderLeft with signedOrderRight
-            await web3Wrapper.awaitTransactionSuccessAsync(
-                await orderMatcher.matchOrders.sendTransactionAsync(
-                    signedOrderLeft,
-                    signedOrderRight,
-                    signedOrderLeft.signature,
-                    signedOrderRight.signature,
-                ),
+            signedOrderRight.makerAssetData = '0x';
+            signedOrderRight.takerAssetData = '0x';
+            const data = exchange.matchOrders.getABIEncodedTransactionData(
+                signedOrderLeft,
+                signedOrderRight,
+                signedOrderLeft.signature,
+                signedOrderRight.signature,
+            );
+            const txReceipt = await web3Wrapper.awaitTransactionSuccessAsync(
+                await web3Wrapper.sendTransactionAsync({
+                    data,
+                    to: orderMatcher.address,
+                    from: owner,
+                    gas: constants.MAX_MATCH_ORDERS_GAS,
+                }),
                 constants.AWAIT_TRANSACTION_MINED_MS,
             );
+            console.log(+txReceipt.gasUsed);
             const newLeftMakerAssetTakerBalance = await erc20TokenA.balanceOf.callAsync(orderMatcher.address);
             const newLeftTakerAssetTakerBalance = await erc20TokenB.balanceOf.callAsync(orderMatcher.address);
             const newErc20Balances = await erc20Wrapper.getBalancesAsync();
@@ -341,6 +374,47 @@ describe('OrderMatcher', () => {
             expect(newLeftTakerAssetTakerBalance).to.be.bignumber.equal(
                 initialLeftTakerAssetTakerBalance.plus(expectedTransferAmounts.leftTakerAssetSpreadAmount),
             );
+        });
+        it('test batchFillOrKill', async () => {
+            const signedOrderLeft = await orderFactoryLeft.newSignedOrderAsync({
+                makerAssetAmount: Web3Wrapper.toBaseUnitAmount(new BigNumber(5), 18),
+                takerAssetAmount: Web3Wrapper.toBaseUnitAmount(new BigNumber(10), 18),
+            });
+            const signedOrderRight = await orderFactoryRight.newSignedOrderAsync({
+                makerAssetAmount: Web3Wrapper.toBaseUnitAmount(new BigNumber(20), 18),
+                takerAssetAmount: Web3Wrapper.toBaseUnitAmount(new BigNumber(4), 18),
+            });
+            const txReceipt = await web3Wrapper.awaitTransactionSuccessAsync(
+                await exchange.batchFillOrKillOrders.sendTransactionAsync(
+                    [signedOrderLeft, signedOrderRight],
+                    [signedOrderLeft.takerAssetAmount, signedOrderRight.takerAssetAmount],
+                    [signedOrderLeft.signature, signedOrderRight.signature],
+                    { from: takerAddress },
+                ),
+                constants.AWAIT_TRANSACTION_MINED_MS,
+            );
+            console.log(+txReceipt.gasUsed);
+        });
+        it('test matchOrders', async () => {
+            const signedOrderLeft = await orderFactoryLeft.newSignedOrderAsync({
+                makerAssetAmount: Web3Wrapper.toBaseUnitAmount(new BigNumber(5), 18),
+                takerAssetAmount: Web3Wrapper.toBaseUnitAmount(new BigNumber(10), 18),
+            });
+            const signedOrderRight = await orderFactoryRight.newSignedOrderAsync({
+                makerAssetAmount: Web3Wrapper.toBaseUnitAmount(new BigNumber(20), 18),
+                takerAssetAmount: Web3Wrapper.toBaseUnitAmount(new BigNumber(4), 18),
+            });
+            const txReceipt = await web3Wrapper.awaitTransactionSuccessAsync(
+                await exchange.matchOrders.sendTransactionAsync(
+                    signedOrderLeft,
+                    signedOrderRight,
+                    signedOrderLeft.signature,
+                    signedOrderRight.signature,
+                    { from: takerAddress },
+                ),
+                constants.AWAIT_TRANSACTION_MINED_MS,
+            );
+            console.log(+txReceipt.gasUsed);
         });
     });
 });
