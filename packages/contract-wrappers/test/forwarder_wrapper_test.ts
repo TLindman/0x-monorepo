@@ -53,7 +53,7 @@ describe('ForwarderWrapper', () => {
             contractWrappers.erc20Proxy.address,
             contractWrappers.erc721Proxy.address,
         );
-        [, makerAddress, takerAddress ] = userAddresses;
+        [, makerAddress, takerAddress] = userAddresses;
         [makerTokenAddress] = tokenUtils.getDummyERC20TokenAddresses();
         takerTokenAddress = contractWrappers.forwarder.etherTokenAddress;
         [makerAssetData, takerAssetData] = [
