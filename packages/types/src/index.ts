@@ -599,25 +599,3 @@ export interface Metadata {
     externalTypeToLink: ExternalTypeToLink;
     externalExportToLink: ExternalExportToLink;
 }
-
-export interface ContractAddresses {
-    erc20Proxy: string;
-    erc721Proxy: string;
-    zrxToken: string;
-    etherToken: string;
-    exchange: string;
-    assetProxyOwner: string;
-    forwarder: string;
-    orderValidator: string;
-}
-
-export interface OptionalContractAddresses {
-    erc20Proxy?: string;
-    erc721Proxy?: string;
-    zrxToken?: string;
-    etherToken?: string;
-    exchange?: string;
-    assetProxyOwner?: string;
-    forwarder?: string;
-    orderValidator?: string;
-}

@@ -12,6 +12,7 @@ import {
     SignerType,
     Web3ProviderEngine,
 } from '0x.js';
+import { getContractAddressesForNetwork } from '@0xproject/contract-addresses';
 import { NonceTrackerSubprovider, PrivateKeyWalletSubprovider } from '@0xproject/subproviders';
 import { logUtils } from '@0xproject/utils';
 import { Web3Wrapper } from '@0xproject/web3-wrapper';
@@ -68,17 +69,7 @@ export class Handler {
             const networkId = parseInt(networkIdString, 10);
             const contractWrappersConfig = {
                 networkId,
-                // TODO(albrow): Load in real contract addresses here.
-                contractAddresses: {
-                    erc20Proxy: '',
-                    erc721Proxy: '',
-                    zrxToken: '',
-                    etherToken: '',
-                    exchange: '',
-                    assetProxyOwner: '',
-                    forwarder: '',
-                    orderValidator: '',
-                },
+                contractAddresses: getContractAddressesForNetwork(networkId),
             };
             const contractWrappers = new ContractWrappers(providerObj, contractWrappersConfig);
             const dispatchQueue = new DispatchQueue();
